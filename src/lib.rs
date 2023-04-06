@@ -37,7 +37,7 @@ pub enum AddCoinsError {
 }
 
 impl Wallet {
-    /// Adds all the coin diffs at a particular block height.
+    /// Adds all the coin diffs at a particular block height. Clears pending transactions that the coin diffs show are
     pub fn add_coins(
         &mut self,
         height: BlockHeight,
@@ -70,12 +70,26 @@ impl Wallet {
         Ok(())
     }
 
-    /// Prepare a transaction. Attempts to produce a signed transaction,
+    /// Reset the wallet to a certain set of coins.
+    pub fn full_reset(
+        &mut self,
+        latest_height: BlockHeight,
+        confirmed_utxos: impl IntoIterator<Item = (CoinID, CoinDataHeight)>,
+    ) -> Result<(), AddCoinsError> {
+        todo!()
+    }
+
+    /// Prepare a transaction. Attempts to produce a signed transaction that fits the constraints given by the arguments.
     pub fn prepare_tx<S: Signer>(
         &self,
         args: PrepareTxArgs,
         signer: &S,
     ) -> Result<Transaction, PrepareTxError<S::Error>> {
+        todo!()
+    }
+
+    /// Note a pending, outgoing transaction. This should be called *after* this transaction has been sent successfully to the network, and the main effect is to prevent the wallet from using the coins that the transaction spent, even before that transaction confirms.
+    pub fn add_pending(&mut self, tx: Transaction) {
         todo!()
     }
 }
@@ -95,7 +109,7 @@ pub enum PrepareTxError<E: Error> {
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-/// Arguments passed to [crate::MelwalletdProtocol::prepare_tx]. Configures what sort of transaction to construct.
+/// Constraints on what sort of transaction to prepare.
 pub struct PrepareTxArgs {
     /// "Kind" of the transaction.
     pub kind: TxKind,

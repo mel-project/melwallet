@@ -1,0 +1,15 @@
+[package]
+name = "melwallet"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytes = {version="1.4.0", features=["serde"]}
+melstructs = "0.3.2"
+serde = {version="1.0.159", features=["derive"]}
+
+serde_with = "1"
+stdcode = "0.1.14"
+thiserror = "1.0.40"

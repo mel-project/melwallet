@@ -9,7 +9,8 @@ use std::{
 };
 
 use melstructs::{
-    Address, BlockHeight, CoinData, CoinDataHeight, CoinID, Denom, Transaction, TxHash, TxKind,
+    Address, BlockHeight, CoinData, CoinDataHeight, CoinID, CoinValue, Denom, Transaction, TxHash,
+    TxKind,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -76,7 +77,20 @@ impl Wallet {
         latest_height: BlockHeight,
         confirmed_utxos: impl IntoIterator<Item = (CoinID, CoinDataHeight)>,
     ) -> Result<(), AddCoinsError> {
-        todo!()
+        let confirmed_utxos: BTreeMap<CoinID, CoinDataHeight> =
+            confirmed_utxos.into_iter().collect();
+
+        // Verify that the inputs have the correct address
+        for (_, coin_data_height) in confirmed_utxos.iter() {
+            if coin_data_height.coin_data.covhash != self.address {
+                return Err(AddCoinsError::WrongAddress);
+            }
+        }
+
+        self.height = latest_height;
+        self.confirmed_utxos = confirmed_utxos;
+        self.pending_outgoing.clear();
+        Ok(())
     }
 
     /// Prepare a transaction. Attempts to produce a signed transaction that fits the constraints given by the arguments.
@@ -84,13 +98,98 @@ impl Wallet {
         &self,
         args: PrepareTxArgs,
         signer: &S,
+        fee_multiplier: u128,
     ) -> Result<Transaction, PrepareTxError<S::Error>> {
-        todo!()
+        // Exponentially increase the fees until we either run out of money, or we have enough fees.
+        for power in 0.. {
+            let fee = CoinValue(1.1f64.powi(power) as _);
+            // Tally up the total outputs
+            let mut inmoney_needed: BTreeMap<Denom, CoinValue> =
+                args.outputs
+                    .iter()
+                    .fold(BTreeMap::new(), |mut map, output| {
+                        if output.denom != Denom::NewCustom {
+                            *map.entry(output.denom).or_default() += output.value;
+                        }
+                        map
+                    });
+            *inmoney_needed.entry(Denom::Mel).or_default() += fee;
+            // pick out input UTXOs until we have enough, then construct a Transaction
+            let mut to_spend = args.inputs.clone();
+            let mut inmoney_actual: BTreeMap<Denom, CoinValue> =
+                to_spend.iter().fold(BTreeMap::new(), |mut map, (_, cdh)| {
+                    *map.entry(cdh.coin_data.denom).or_default() += cdh.coin_data.value;
+
+                    map
+                });
+            let mut touched_coin_count = 0;
+            for (denom, needed) in inmoney_needed.iter() {
+                for (in_coinid, in_cdh) in self
+                    .spendable_utxos()
+                    .filter(|(_, v)| &v.coin_data.denom == denom)
+                {
+                    if inmoney_actual.get(denom).copied().unwrap_or_default() < *needed {
+                        touched_coin_count += 1;
+                        to_spend.push((*in_coinid, in_cdh.clone()));
+                        *inmoney_actual.entry(*denom).or_default() += in_cdh.coin_data.value;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            // produce change outputs
+            let mut outputs = args.outputs.clone();
+            for (denom, inmoney) in &inmoney_actual {
+                if let Some(change_value) =
+                    inmoney.checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
+                {
+                    outputs.push(CoinData {
+                        covhash: self.address,
+                        denom: *denom,
+                        value: change_value,
+                        additional_data: Bytes::new(),
+                    });
+                } else {
+                    return Err(PrepareTxError::InsufficientFunds(*denom));
+                }
+            }
+            // assemble the transaction
+            let mut assembled = Transaction {
+                kind: args.kind,
+                inputs: to_spend.iter().map(|s| s.0).collect(),
+                outputs,
+                fee,
+                covenants: std::iter::repeat(signer.covenant())
+                    .take(to_spend.len())
+                    .collect(),
+                data: args.data.clone(),
+                sigs: std::iter::repeat(Bytes::from(vec![0; signer.sig_size()]))
+                    .take(to_spend.len())
+                    .collect(),
+            };
+            if assembled.weight(melvm::covenant_weight_from_bytes) * fee_multiplier <= fee.0 {
+                assembled.sigs.clear();
+                let signed = ((args.inputs.len())..(args.inputs.len() + touched_coin_count))
+                    .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
+                return Ok(signed);
+            }
+        }
+        Err(PrepareTxError::InsufficientFunds(Denom::Mel))
     }
 
     /// Note a pending, outgoing transaction. This should be called *after* this transaction has been sent successfully to the network, and the main effect is to prevent the wallet from using the coins that the transaction spent, even before that transaction confirms.
     pub fn add_pending(&mut self, tx: Transaction) {
-        todo!()
+        self.pending_outgoing.insert(tx.hash_nosigs(), tx);
+    }
+
+    fn spendable_utxos(&self) -> impl Iterator<Item = (&CoinID, &CoinDataHeight)> + '_ {
+        self.confirmed_utxos.iter().filter(|(k, _)| {
+            // filter out the coins that a pending output is trying to spend
+            !self
+                .pending_outgoing
+                .iter()
+                .any(|(_, tx)| tx.inputs.iter().any(|pending_input| &pending_input == k))
+        })
     }
 }
 
@@ -104,7 +203,7 @@ pub enum PrepareTxError<E: Error> {
     BadExternalInput(CoinID),
 
     #[error("signer refused to sign with error: {0}")]
-    SignerRefused(E),
+    SignerRefused(#[from] E),
 }
 
 #[serde_as]

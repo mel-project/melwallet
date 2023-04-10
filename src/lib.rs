@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// A [Wallet] is a bookkeeping struct to keep track of all the coins locked by a particular covenant.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wallet {
     /// The address (covenant hash) that all the coins here are associated with.
     pub address: Address,

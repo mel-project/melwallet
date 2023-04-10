@@ -9,8 +9,8 @@ use std::{
 };
 
 use melstructs::{
-    Address, BlockHeight, CoinData, CoinDataHeight, CoinID, CoinValue, Denom, Transaction, TxHash,
-    TxKind, NetID,
+    Address, BlockHeight, CoinData, CoinDataHeight, CoinID, CoinValue, Denom, NetID, Transaction,
+    TxHash, TxKind,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -42,10 +42,12 @@ pub enum AddCoinsError {
 impl Wallet {
     /// Lists the balances of the wallet, by token.
     pub fn balances(&self) -> BTreeMap<Denom, CoinValue> {
-        self.confirmed_utxos.values().fold(BTreeMap::new(), |mut map, cdh| {
-            map.entry(cdh.coin_data.denom).or_default().0 += cdh.coin_data.value.0;
-            map
-        })
+        self.confirmed_utxos
+            .values()
+            .fold(BTreeMap::new(), |mut map, cdh| {
+                map.entry(cdh.coin_data.denom).or_default().0 += cdh.coin_data.value.0;
+                map
+            })
     }
 
     /// Adds all the coin diffs at a particular block height. Clears pending transactions that the coin diffs show are

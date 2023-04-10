@@ -10,7 +10,7 @@ use std::{
 
 use melstructs::{
     Address, BlockHeight, CoinData, CoinDataHeight, CoinID, CoinValue, Denom, Transaction, TxHash,
-    TxKind,
+    TxKind, NetID,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -18,6 +18,8 @@ use thiserror::Error;
 /// A [Wallet] is a bookkeeping struct to keep track of all the coins locked by a particular covenant.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wallet {
+    /// NetID of this wallet
+    pub netid: NetID,
     /// The address (covenant hash) that all the coins here are associated with.
     pub address: Address,
     /// The latest block height known to this wallet.
@@ -38,6 +40,14 @@ pub enum AddCoinsError {
 }
 
 impl Wallet {
+    /// Lists the balances of the wallet, by token.
+    pub fn balances(&self) -> BTreeMap<Denom, CoinValue> {
+        self.confirmed_utxos.values().fold(BTreeMap::new(), |mut map, cdh| {
+            map.entry(cdh.coin_data.denom).or_default().0 += cdh.coin_data.value.0;
+            map
+        })
+    }
+
     /// Adds all the coin diffs at a particular block height. Clears pending transactions that the coin diffs show are
     pub fn add_coins(
         &mut self,

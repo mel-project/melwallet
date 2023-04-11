@@ -80,6 +80,7 @@ impl Wallet {
         for k in spent_coins {
             self.confirmed_utxos.remove(&k);
         }
+        self.height += BlockHeight(1);
         Ok(())
     }
 

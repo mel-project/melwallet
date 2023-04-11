@@ -1,6 +1,6 @@
 mod signer;
 use bytes::Bytes;
-use serde_with::serde_as;
+use serde_with::{serde_as, Same};
 pub use signer::*;
 
 use std::{
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// A [Wallet] is a bookkeeping struct to keep track of all the coins locked by a particular covenant.
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wallet {
     /// NetID of this wallet
@@ -24,8 +25,10 @@ pub struct Wallet {
     pub address: Address,
     /// The latest block height known to this wallet.
     pub height: BlockHeight,
+    #[serde_as(as = "Vec<(Same, Same)>")]
     /// All the *confirmed* UTXOs: output coins of confirmed transactions that this wallet can spend.
     pub confirmed_utxos: BTreeMap<CoinID, CoinDataHeight>,
+    #[serde_as(as = "Vec<(Same, Same)>")]
     /// Pending outgoing transactions. These transactions' outputs may be further spent in more transactions, but they aren't confirmed yet. We use a map in order to ensure deduplication.
     pub pending_outgoing: BTreeMap<TxHash, Transaction>,
 }
@@ -101,8 +104,11 @@ impl Wallet {
         }
 
         self.height = latest_height;
+        println!("set latest height");
         self.confirmed_utxos = confirmed_utxos;
+        println!("set confirmed_utxos");
         self.pending_outgoing.clear();
+        println!("cleared pending_outgoing");
         Ok(())
     }
 
@@ -180,7 +186,15 @@ impl Wallet {
                     .take(to_spend.len())
                     .collect(),
             };
-            if assembled.weight(melvm::covenant_weight_from_bytes) * fee_multiplier <= fee.0 {
+            if assembled
+                .base_fee(
+                    fee_multiplier,
+                    args.fee_ballast as u128,
+                    melvm::covenant_weight_from_bytes,
+                )
+                .0
+                <= fee.0
+            {
                 assembled.sigs.clear();
                 let signed = ((args.inputs.len())..(args.inputs.len() + touched_coin_count))
                     .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;

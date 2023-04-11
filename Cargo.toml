@@ -11,8 +11,8 @@ bytes = {version="1.4.0", features=["serde"]}
 melstructs = "0.3.2"
 melvm = "0.1.0"
 serde = {version="1.0.159", features=["derive"]}
+serde_with = {version="1"}
 
-serde_with = "1"
 stdcode = "0.1.14"
 thiserror = "1.0.40"
 tmelcrypt = "0.2.7"

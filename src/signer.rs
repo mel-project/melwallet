@@ -32,9 +32,12 @@ impl Signer for StdEd25519Signer {
         64
     }
 
+    /// signs the transaction and puts it in the for_input-th entry of Transaction::sigs
     fn sign(&self, txn: &Transaction, for_input: usize) -> Result<Transaction, Self::Error> {
         let mut txn = txn.clone();
-        txn.sigs.resize(for_input.max(txn.sigs.len()), Bytes::new());
+        // make sure sigs is big enough, padding it with empty elements as needed
+        txn.sigs
+            .resize((for_input + 1).max(txn.sigs.len()), Bytes::new());
         txn.sigs[for_input] = self.0.sign(&txn.hash_nosigs().0).into();
         Ok(txn)
     }

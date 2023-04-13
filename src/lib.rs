@@ -104,11 +104,8 @@ impl Wallet {
         }
 
         self.height = latest_height;
-        println!("set latest height");
         self.confirmed_utxos = confirmed_utxos;
-        println!("set confirmed_utxos");
         self.pending_outgoing.clear();
-        println!("cleared pending_outgoing");
         Ok(())
     }
 

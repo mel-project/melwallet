@@ -3,6 +3,7 @@ name = "melwallet"
 version = "0.1.0"
 edition = "2021"
 license="ISC"
+repository="https://github.com/mel-project/melwallet"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -163,12 +163,14 @@ impl Wallet {
                 if let Some(change_value) =
                     inmoney.checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
                 {
-                    outputs.push(CoinData {
-                        covhash: self.address,
-                        denom: *denom,
-                        value: change_value,
-                        additional_data: Bytes::new(),
-                    });
+                    if change_value > CoinValue(0) {
+                        outputs.push(CoinData {
+                            covhash: self.address,
+                            denom: *denom,
+                            value: change_value,
+                            additional_data: Bytes::new(),
+                        });
+                    }
                 } else {
                     return Err(PrepareTxError::InsufficientFunds(*denom));
                 }
@@ -197,7 +199,7 @@ impl Wallet {
                 <= fee.0
             {
                 assembled.sigs.clear();
-                let signed = ((args.inputs.len())..(args.inputs.len() + touched_coin_count))
+                let signed = (0..(args.inputs.len() + touched_coin_count))
                     .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
                 return Ok(signed);
             }

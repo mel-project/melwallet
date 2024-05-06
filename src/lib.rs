@@ -115,6 +115,7 @@ impl Wallet {
         args: PrepareTxArgs,
         signer: &S,
         fee_multiplier: u128,
+        check_balanced: bool,
     ) -> Result<Transaction, PrepareTxError<S::Error>> {
         // Exponentially increase the fees until we either run out of money, or we have enough fees.
         for power in 0.. {
@@ -159,20 +160,24 @@ impl Wallet {
                 return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
             }
 
-            for (denom, inmoney) in &inmoney_actual {
-                if let Some(change_value) =
-                    inmoney.checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
-                {
-                    outputs.push(CoinData {
-                        covhash: self.address,
-                        denom: *denom,
-                        value: change_value,
-                        additional_data: Bytes::new(),
-                    });
-                } else {
-                    return Err(PrepareTxError::InsufficientFunds(*denom));
+            // check we've got enough of every currency needed
+            if check_balanced {
+                for (denom, inmoney) in &inmoney_actual {
+                    if let Some(change_value) = inmoney
+                        .checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
+                    {
+                        outputs.push(CoinData {
+                            covhash: self.address,
+                            denom: *denom,
+                            value: change_value,
+                            additional_data: Bytes::new(),
+                        });
+                    } else {
+                        return Err(PrepareTxError::InsufficientFunds(*denom));
+                    }
                 }
             }
+
             // assemble the transaction
             let mut assembled = Transaction {
                 kind: args.kind,

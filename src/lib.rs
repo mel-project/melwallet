@@ -160,19 +160,18 @@ impl Wallet {
                 return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
             }
 
-            // check we've got enough of every currency needed
-            if check_balanced {
-                for (denom, inmoney) in &inmoney_actual {
-                    if let Some(change_value) = inmoney
-                        .checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
-                    {
-                        outputs.push(CoinData {
-                            covhash: self.address,
-                            denom: *denom,
-                            value: change_value,
-                            additional_data: Bytes::new(),
-                        });
-                    } else {
+            for (denom, inmoney) in &inmoney_actual {
+                if let Some(change_value) =
+                    inmoney.checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
+                {
+                    outputs.push(CoinData {
+                        covhash: self.address,
+                        denom: *denom,
+                        value: change_value,
+                        additional_data: Bytes::new(),
+                    });
+                } else {
+                    if check_balanced {
                         return Err(PrepareTxError::InsufficientFunds(*denom));
                     }
                 }

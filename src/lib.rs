@@ -156,7 +156,7 @@ impl Wallet {
             }
             // produce change outputs
             let mut outputs = args.outputs.clone();
-            if inmoney_actual.is_empty() {
+            if !inmoney_actual.contains_key(&Denom::Mel) {
                 return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
             }
 

@@ -156,7 +156,7 @@ impl Wallet {
             }
             // produce change outputs
             let mut outputs = args.outputs.clone();
-            if *inmoney_actual.entry(Denom::Mel).or_default() >= fee {
+            if *inmoney_actual.entry(Denom::Mel).or_default() < fee {
                 return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
             }
 

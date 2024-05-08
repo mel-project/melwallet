@@ -115,17 +115,21 @@ impl Wallet {
         args: PrepareTxArgs,
         signer: &S,
         fee_multiplier: u128,
-        check_balanced: bool,
     ) -> Result<Transaction, PrepareTxError<S::Error>> {
         // Exponentially increase the fees until we either run out of money, or we have enough fees.
         for power in 0.. {
             let fee = CoinValue(1.1f64.powi(power) as _);
+            println!("fee = {fee}");
+            println!("TxKind: {}", args.kind);
             // Tally up the total outputs
             let mut inmoney_needed: BTreeMap<Denom, CoinValue> =
                 args.outputs
                     .iter()
                     .fold(BTreeMap::new(), |mut map, output| {
-                        if output.denom != Denom::NewCustom {
+                        if output.denom != Denom::NewCustom
+                            && !(args.kind == TxKind::DoscMint && output.denom == Denom::Erg)
+                        {
+                            println!("inmoney_needed += {}", output.denom);
                             *map.entry(output.denom).or_default() += output.value;
                         }
                         map
@@ -173,9 +177,7 @@ impl Wallet {
                         });
                     }
                 } else {
-                    if check_balanced {
-                        return Err(PrepareTxError::InsufficientFunds(*denom));
-                    }
+                    return Err(PrepareTxError::InsufficientFunds(*denom));
                 }
             }
 

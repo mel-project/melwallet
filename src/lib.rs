@@ -119,8 +119,6 @@ impl Wallet {
         // Exponentially increase the fees until we either run out of money, or we have enough fees.
         for power in 0.. {
             let fee = CoinValue(1.1f64.powi(power) as _);
-            println!("fee = {fee}");
-            println!("TxKind: {}", args.kind);
             // Tally up the total outputs
             let mut inmoney_needed: BTreeMap<Denom, CoinValue> =
                 args.outputs
@@ -205,8 +203,8 @@ impl Wallet {
                 <= fee.0
             {
                 assembled.sigs.clear();
-                let signed = (0..(args.inputs.len() + touched_coin_count))
-                    .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
+                let signed =
+                    (0..to_spend.len()).try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
                 return Ok(signed);
             }
         }

@@ -134,7 +134,6 @@ impl Wallet {
                             if mel_inmoney < fee {
                                 to_spend.push((*in_coinid, in_cdh.clone()));
                                 mel_inmoney += in_cdh.coin_data.value;
-                                dbg!(&to_spend);
                             } else {
                                 break;
                             }

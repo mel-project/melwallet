@@ -115,66 +115,99 @@ impl Wallet {
         args: PrepareTxArgs,
         signer: &S,
         fee_multiplier: u128,
-        check_balanced: bool,
     ) -> Result<Transaction, PrepareTxError<S::Error>> {
         // Exponentially increase the fees until we either run out of money, or we have enough fees.
         for power in 0.. {
             let fee = CoinValue(1.1f64.powi(power) as _);
-            // Tally up the total outputs
-            let mut inmoney_needed: BTreeMap<Denom, CoinValue> =
-                args.outputs
-                    .iter()
-                    .fold(BTreeMap::new(), |mut map, output| {
-                        if output.denom != Denom::NewCustom {
-                            *map.entry(output.denom).or_default() += output.value;
-                        }
-                        map
-                    });
-            *inmoney_needed.entry(Denom::Mel).or_default() += fee;
-            // pick out input UTXOs until we have enough, then construct a Transaction
             let mut to_spend = args.inputs.clone();
-            let mut inmoney_actual: BTreeMap<Denom, CoinValue> =
-                to_spend.iter().fold(BTreeMap::new(), |mut map, (_, cdh)| {
-                    *map.entry(cdh.coin_data.denom).or_default() += cdh.coin_data.value;
+            let mut outputs = args.outputs.clone();
 
-                    map
-                });
-            let mut touched_coin_count = 0;
-            for (denom, needed) in inmoney_needed.iter() {
-                for (in_coinid, in_cdh) in self
-                    .spendable_utxos()
-                    .filter(|(_, v)| &v.coin_data.denom == denom)
-                {
-                    if inmoney_actual.get(denom).copied().unwrap_or_default() < *needed {
-                        touched_coin_count += 1;
-                        to_spend.push((*in_coinid, in_cdh.clone()));
-                        *inmoney_actual.entry(*denom).or_default() += in_cdh.coin_data.value;
+            match args.kind {
+                // DoscMint transactions are not balanced so we handle them separately
+                TxKind::DoscMint => {
+                    // make sure we have enough mel for the fee
+                    let mut mel_inmoney = CoinValue(0);
+                    for (in_coinid, in_cdh) in self
+                            .spendable_utxos()
+                            .filter(|(_, v)| &v.coin_data.denom == &Denom::Mel)
+                        {
+                            if mel_inmoney < fee {
+                                to_spend.push((*in_coinid, in_cdh.clone()));
+                                mel_inmoney += in_cdh.coin_data.value;
+                                dbg!(&to_spend);
+                            } else {
+                                break;
+                            }
+                        }
+
+                    // produce change output
+                    if let Some(change_value) = mel_inmoney
+                        .checked_sub(fee)
+                    {
+                        if change_value > CoinValue(0) {
+                            outputs.push(CoinData {
+                                covhash: self.address,
+                                denom: Denom::Mel,
+                                value: change_value,
+                                additional_data: Bytes::new(),
+                            });
+                        }
                     } else {
-                        break;
+                        return Err(PrepareTxError::InsufficientFunds(Denom::Mel));
                     }
                 }
-            }
-            // produce change outputs
-            let mut outputs = args.outputs.clone();
-            if *inmoney_actual.entry(Denom::Mel).or_default() < fee {
-                return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
-            }
+                _ => {
+                    // tally up the money needed for our outputs and fee
+                    let mut inmoney_needed: BTreeMap<Denom, CoinValue> =
+                        args.outputs
+                            .iter()
+                            .fold(BTreeMap::new(), |mut map, output| {
+                                if output.denom != Denom::NewCustom {
+                                    *map.entry(output.denom).or_default() += output.value;
+                                }
+                                map
+                            });
+                    *inmoney_needed.entry(Denom::Mel).or_default() += fee;
 
-            for (denom, inmoney) in &inmoney_actual {
-                if let Some(change_value) =
-                    inmoney.checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
-                {
-                    if change_value > CoinValue(0) {
-                        outputs.push(CoinData {
-                            covhash: self.address,
-                            denom: *denom,
-                            value: change_value,
-                            additional_data: Bytes::new(),
+                    let mut inmoney_actual: BTreeMap<Denom, CoinValue> =
+                        to_spend.iter().fold(BTreeMap::new(), |mut map, (_, cdh)| {
+                            *map.entry(cdh.coin_data.denom).or_default() += cdh.coin_data.value;
+
+                            map
                         });
+
+                    // pick out input UTXOs until we have enough
+                    for (denom, needed) in inmoney_needed.iter() {
+                        for (in_coinid, in_cdh) in self
+                            .spendable_utxos()
+                            .filter(|(_, v)| &v.coin_data.denom == denom)
+                        {
+                            if inmoney_actual.get(denom).copied().unwrap_or_default() < *needed {
+                                to_spend.push((*in_coinid, in_cdh.clone()));
+                                *inmoney_actual.entry(*denom).or_default() +=
+                                    in_cdh.coin_data.value;
+                            } else {
+                                break;
+                            }
+                        }
                     }
-                } else {
-                    if check_balanced {
-                        return Err(PrepareTxError::InsufficientFunds(*denom));
+
+                    // produce change outputs
+                    for (denom, inmoney) in &inmoney_actual {
+                        if let Some(change_value) = inmoney
+                            .checked_sub(inmoney_needed.get(denom).copied().unwrap_or(CoinValue(0)))
+                        {
+                            if change_value > CoinValue(0) {
+                                outputs.push(CoinData {
+                                    covhash: self.address,
+                                    denom: *denom,
+                                    value: change_value,
+                                    additional_data: Bytes::new(),
+                                });
+                            }
+                        } else {
+                            return Err(PrepareTxError::InsufficientFunds(*denom));
+                        }
                     }
                 }
             }
@@ -203,7 +236,7 @@ impl Wallet {
                 <= fee.0
             {
                 assembled.sigs.clear();
-                let signed = (0..(args.inputs.len() + touched_coin_count))
+                let signed = (0..to_spend.len())
                     .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
                 return Ok(signed);
             }

@@ -124,7 +124,9 @@ impl Wallet {
                 args.outputs
                     .iter()
                     .fold(BTreeMap::new(), |mut map, output| {
-                        if output.denom != Denom::NewCustom {
+                        if output.denom != Denom::NewCustom
+                            && !(args.kind == TxKind::DoscMint && output.denom == Denom::Erg)
+                        {
                             *map.entry(output.denom).or_default() += output.value;
                         }
                         map
@@ -155,7 +157,7 @@ impl Wallet {
             }
             // produce change outputs
             let mut outputs = args.outputs.clone();
-            if inmoney_actual.is_empty() {
+            if !inmoney_actual.contains_key(&Denom::Mel) {
                 return Err(PrepareTxError::InsufficientFunds(Denom::Mel)); // you always need MEL to pay the transaction fee
             }
 
@@ -175,6 +177,7 @@ impl Wallet {
                     return Err(PrepareTxError::InsufficientFunds(*denom));
                 }
             }
+
             // assemble the transaction
             let mut assembled = Transaction {
                 kind: args.kind,
@@ -198,9 +201,10 @@ impl Wallet {
                 .0
                 <= fee.0
             {
+                // println!("FEE = {}", fee);
                 assembled.sigs.clear();
-                let signed = (0..(args.inputs.len() + touched_coin_count))
-                    .try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
+                let signed =
+                    (0..to_spend.len()).try_fold(assembled, |tx, i| signer.sign(&tx, i))?;
                 return Ok(signed);
             }
         }
